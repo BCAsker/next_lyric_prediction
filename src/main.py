@@ -42,9 +42,9 @@ def generate_playlist_dataframe(spotify: spotipy.Spotify, playlist_id, genius: l
 
 
 def get_lyrics(df_row, genius):
-    cache_path = get_cache_path(df_row["track_name"], df_row["artist_name"])
-    if os.path.exists(cache_path):
-        with open(cache_path, "rb") as f:
+    raw_data_path = get_raw_data_path(df_row["track_name"], df_row["artist_name"])
+    if os.path.exists(raw_data_path):
+        with open(raw_data_path, "rb") as f:
             return f.read().decode("utf8")
     else:
         lyrics = ""
@@ -54,7 +54,7 @@ def get_lyrics(df_row, genius):
                 fetched = genius.search_song(df_row["track_name"], df_row["artist_name"], get_full_info=False)
                 if fetched is not None:
                     lyrics = fetched.to_text()
-                with open(cache_path, "wb") as f:
+                with open(raw_data_path, "wb") as f:
                     f.write(lyrics.encode("utf8"))
                 break
             except socket.timeout:
@@ -64,9 +64,9 @@ def get_lyrics(df_row, genius):
         return lyrics
 
 
-def get_cache_path(track_name, artist_name):
+def get_raw_data_path(track_name, artist_name):
     # TODO: Improve replacements
-    return os.path.join(os.pardir, "cache", f"{artist_name} {track_name}.txt").replace("/", "").replace("?", "")
+    return os.path.join(os.pardir, "raw_data", f"{artist_name} {track_name}.txt").replace("/", "").replace("?", "")
 
 
 def tidy_genius_lyrics(annotated_lyrics, remove_annotations=True):
