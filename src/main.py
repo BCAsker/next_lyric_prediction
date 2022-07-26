@@ -1,3 +1,5 @@
+import re
+
 import config
 import oauth_config
 from generate_dataset_1 import main as generate_dataset
@@ -38,7 +40,7 @@ def generate_playlist_dataframe(spotify: spotipy.Spotify, playlist_id, genius: l
     df["lyrics"] = df.apply(get_lyrics, axis=1, result_type="expand", genius=genius)
     df["stripped_lyrics"] = df["lyrics"].apply(tidy_genius_lyrics)
 
-    return df.reset_index()
+    return df.reset_index(drop=True)
 
 
 def get_lyrics(df_row, genius):
@@ -86,7 +88,14 @@ def tidy_genius_lyrics(annotated_lyrics, remove_annotations=True):
             stripped_lyrics = stripped_lyrics[:-5]
 
         # Make sure there aren't any double blank lines left by the above
-        return stripped_lyrics.replace("\n\n\n", "\n\n")
+        out = re.sub("\n\n+", "\n\n", stripped_lyrics)
+        # Clear out any leading newlines
+        while out.startswith("\n"):
+            out = out[1:]
+        # Clear out any trailing numbers (which genius seems to occasionaly give us for some reason)
+        while out.endswith(tuple([str(i) for i in range(0, 10)])):
+            out = out[:-1]
+        return out
     else:
         return None
 
@@ -135,8 +144,7 @@ def main():
     # pd.set_option("display.max_rows", None)
 
     df = generate_playlist_dataframe(spotify, args.playlist_id, genius)
-    x = generate_dataset(df)
-    print(x)
+    train_df, test_df = generate_dataset(df)
 
 
 if __name__ == "__main__":

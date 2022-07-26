@@ -3,4 +3,4 @@ src/.cache
 raw_data/*
 datasets/set_1/test.tsv
 datasets/set_1/train.tsv
-datasets/set_1/song_data.tsv
+datasets/set_1/song_ids.tsv
