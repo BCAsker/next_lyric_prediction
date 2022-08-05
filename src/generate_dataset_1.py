@@ -31,20 +31,34 @@ def get_song_id_df(df: pd.DataFrame):
     return lyric_df, song_id_df
 
 
+# TODO: Batch things up in here for better efficiency
 def get_paired_line_df(lines_df: pd.DataFrame):
-    order = list(lines_df.index)
+    fraction_of_positive_samples = 0.5
 
-    # Drop an element if there are an odd number of lines
-    if len(order) % 2 == 1:
-        order = order[1:]
+    remaining_indices = list(lines_df.index)
+    prompt_indices = []
+    query_indices = []
 
-    random.shuffle(order)
+    # Get the positive samples first
+    while len(prompt_indices) + len(query_indices) < len(lines_df) * fraction_of_positive_samples:
+        new_prompt_index = random.choice(remaining_indices)
 
-    first = order[: len(order) // 2]
-    second = order[len(order) // 2 :]
+        # Make sure the next line is from the same song
+        if (new_prompt_index + 1 in remaining_indices) and (
+            lines_df.iloc[new_prompt_index]["song_id"] == lines_df.iloc[new_prompt_index + 1]["song_id"]
+        ):
+            prompt_indices.append(new_prompt_index)
+            query_indices.append(new_prompt_index + 1)
+            remaining_indices.remove(new_prompt_index)
+            remaining_indices.remove(new_prompt_index + 1)
 
-    prompt_df = lines_df[["song_id", "line_num", "line"]].iloc[first].reset_index(drop=True)
-    query_df = lines_df[["song_id", "line_num", "line"]].iloc[second].reset_index(drop=True)
+    # Now shuffle the rest into negative samples
+    random.shuffle(remaining_indices)
+    prompt_indices.extend(remaining_indices[: len(remaining_indices) // 2])
+    query_indices.extend(remaining_indices[len(remaining_indices) // 2 :])
+
+    prompt_df = lines_df[["song_id", "line_num", "line"]].iloc[prompt_indices].reset_index(drop=True)
+    query_df = lines_df[["song_id", "line_num", "line"]].iloc[query_indices].reset_index(drop=True)
 
     return prompt_df.merge(query_df, left_index=True, right_index=True, suffixes=["_prompt", "_query"])
 
