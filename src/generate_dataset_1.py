@@ -36,47 +36,46 @@ def get_paired_line_df(lines_df: pd.DataFrame):
     fraction_of_positive_samples = 0.5
 
     remaining_indices = list(lines_df.index)
-    prompt_indices = []
-    query_indices = []
+    # tuples of the form (prompt index, query index)
+    index_pairs = []
 
     # Get the positive samples first
-    while len(prompt_indices) + len(query_indices) < len(lines_df) * fraction_of_positive_samples:
+    while len(index_pairs) * 2 < len(lines_df) * fraction_of_positive_samples:
         new_prompt_index = random.choice(remaining_indices)
 
         # Make sure the next line is from the same song
         if (new_prompt_index + 1 in remaining_indices) and (
             lines_df.iloc[new_prompt_index]["song_id"] == lines_df.iloc[new_prompt_index + 1]["song_id"]
         ):
-            prompt_indices.append(new_prompt_index)
-            query_indices.append(new_prompt_index + 1)
+            index_pairs.append((new_prompt_index, new_prompt_index + 1))
             remaining_indices.remove(new_prompt_index)
             remaining_indices.remove(new_prompt_index + 1)
 
     # Now shuffle the rest into negative samples
     random.shuffle(remaining_indices)
-    prompt_indices.extend(remaining_indices[: len(remaining_indices) // 2])
-    query_indices.extend(remaining_indices[len(remaining_indices) // 2 :])
+    index_pairs.extend(
+        zip(remaining_indices[: len(remaining_indices) // 2], remaining_indices[len(remaining_indices) // 2 :])
+    )
 
-    prompt_df = lines_df[["song_id", "line_num", "line"]].iloc[prompt_indices].reset_index(drop=True)
-    query_df = lines_df[["song_id", "line_num", "line"]].iloc[query_indices].reset_index(drop=True)
+    random.shuffle(index_pairs)
+    prompt_df = (
+        lines_df[["song_id", "line_num", "line"]].iloc[[first for first, _ in index_pairs]].reset_index(drop=True)
+    )
+    query_df = (
+        lines_df[["song_id", "line_num", "line"]].iloc[[second for _, second in index_pairs]].reset_index(drop=True)
+    )
 
     return prompt_df.merge(query_df, left_index=True, right_index=True, suffixes=["_prompt", "_query"])
 
 
 def does_line_2_follow_line_1(row, lines_df: pd.DataFrame):
-    # If row is the last line in the song, return false straight away because nothing can follow it
-    if (
-        row["line_num_prompt"]
-        == lines_df[["song_id", "line_num"]].groupby("song_id").max().loc[row["song_id_prompt"]].iloc[0]
-    ):
+    line_following_prompt = lines_df["line"].loc[
+        (lines_df["song_id"] == row["song_id_prompt"]) & (lines_df["line_num"] == row["line_num_prompt"] + 1)
+    ]
+    if len(line_following_prompt) == 0:
         return False
     else:
-        line_following_prompt = (
-            lines_df["line"]
-            .loc[(lines_df["song_id"] == row["song_id_prompt"]) & (lines_df["line_num"] == row["line_num_prompt"]) + 1]
-            .iloc[0]
-        )
-        return line_following_prompt == row["line_query"]
+        return line_following_prompt.iloc[0] == row["line_query"]
 
 
 def save_test_train_split(paired_df: pd.DataFrame, lines_df: pd.DataFrame):

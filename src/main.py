@@ -146,6 +146,9 @@ def main():
     df = generate_playlist_dataframe(spotify, args.playlist_id, genius)
     train_df, test_df = generate_dataset(df)
 
+    print(train_df["follows"].value_counts())
+    print(test_df["follows"].value_counts())
+
 
 if __name__ == "__main__":
     main()
