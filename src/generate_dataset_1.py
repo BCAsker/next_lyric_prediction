@@ -94,6 +94,9 @@ def load_test_train_split():
     train_df = pd.read_csv(TRAIN_PATH, sep="\t", index_col="ID")
     test_df = pd.read_csv(TEST_PATH, sep="\t", index_col="ID")
 
+    train_df.fillna("", inplace=True)
+    test_df.fillna("", inplace=True)
+
     return train_df, test_df
 
 
