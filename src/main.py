@@ -2,16 +2,21 @@ import re
 
 import config
 import oauth_config
+import torch
 from generate_dataset_1 import main as generate_dataset
+from dataset_1 import Dataset1
+from model_basic_bert import BasicBertPredictor
 
 import os
+import numpy as np
 import pandas as pd
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import argparse
 import lyricsgenius
 import socket
-
+from torch.utils.data import DataLoader
+from transformers import BertTokenizer
 
 DATAFRAME_HEADERS = ["track_name", "artist_name", "lyrics"]
 
@@ -146,8 +151,33 @@ def main():
     df = generate_playlist_dataframe(spotify, args.playlist_id, genius)
     train_df, test_df = generate_dataset(df)
 
-    print(train_df["follows"].value_counts())
-    print(test_df["follows"].value_counts())
+    bert_tokenizer = BertTokenizer.from_pretrained("bert-base-cased")
+    tokenized_training_data = bert_tokenizer(
+        list(train_df["line_prompt"]),
+        list(train_df["line_query"]),
+        add_special_tokens=True,
+        padding=True,
+        truncation=True,
+        max_length=768,
+        return_tensors="pt",
+    )
+    tokenized_test_data = bert_tokenizer(
+        list(test_df["line_prompt"]),
+        list(test_df["line_query"]),
+        add_special_tokens=True,
+        padding=True,
+        truncation=True,
+        max_length=768,
+        return_tensors="pt",
+    )
+
+    test_dataset = Dataset1(tokenized_test_data, torch.Tensor(list(test_df["follows"])))
+    test_dataloader = DataLoader(test_dataset, batch_size=4, shuffle=True)
+
+    predictor = BasicBertPredictor()
+    for batch_index, (inputs, labels) in enumerate(test_dataloader):
+        result = predictor(*inputs)
+        print(f"{batch_index}, {result}, {labels}")
 
 
 if __name__ == "__main__":
