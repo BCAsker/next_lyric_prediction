@@ -138,6 +138,109 @@ def parse_args():
     return parser.parse_args()
 
 
+def generate_dataloaders_from_dfs(train_df, test_df):
+    batch_size = 4
+    bert_tokenizer = BertTokenizer.from_pretrained("bert-base-cased")
+
+    tokenized_training_data = bert_tokenizer(
+        list(train_df["line_prompt"]),
+        list(train_df["line_query"]),
+        add_special_tokens=True,
+        padding=True,
+        truncation=True,
+        max_length=768,
+        return_tensors="pt"
+    )
+    tokenized_test_data = bert_tokenizer(
+        list(test_df["line_prompt"]),
+        list(test_df["line_query"]),
+        add_special_tokens=True,
+        padding=True,
+        truncation=True,
+        max_length=768,
+        return_tensors="pt",
+    )
+
+    train_dataset = Dataset1(tokenized_training_data, torch.LongTensor(list(train_df["follows"])))
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    test_dataset = Dataset1(tokenized_test_data, torch.LongTensor(list(test_df["follows"])))
+    test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
+
+    return train_dataloader, test_dataloader
+
+
+def train(train_dataloader, model):
+    print("Beginning to train")
+
+    # TODO: Learn about / experiment with different loss functions and optimsers
+    loss_funct = torch.nn.CrossEntropyLoss()
+    optimiser = torch.optim.Adam(model.parameters(), lr=0.00001)
+
+    # TODO: Make epochs const
+    for epoch in range(1):
+        epoch_loss = 0
+
+        for batch_index, (inputs, labels) in enumerate(train_dataloader):
+            optimiser.zero_grad()
+            outputs = model(*inputs)
+            loss = loss_funct(outputs, labels)
+            epoch_loss += loss.item()
+            loss.backward()
+            optimiser.step()
+
+            if batch_index % 25 == 0:
+                print(f"Loss after batch {batch_index}/{len(train_dataloader)} in epoch {epoch} is {epoch_loss}")
+
+    print("Training complete")
+
+
+def test(test_dataloader, model):
+    print("Beginning to test")
+
+    pred_batches = []
+    lab_batches = []
+
+    for batch_index, (inputs, labels) in enumerate(test_dataloader):
+        result = model(*inputs)
+        preds = torch.argmax(result, dim=1)
+
+        pred_batches.append(preds)
+        lab_batches.append(labels)
+
+    print("Testing complete")
+    return torch.cat(pred_batches, dim=0), torch.cat(lab_batches, dim=0)
+
+
+def print_statistics(predictions, labels):
+    true_pos = 0
+    false_pos = 0
+    false_neg = 0
+    true_neg = 0
+
+    for pred, lab in zip(predictions, labels):
+        if pred == 0:
+            if lab == 0:
+                true_neg += 1
+            elif lab == 1:
+                false_neg += 1
+        elif pred == 1:
+            if lab == 0:
+                false_pos += 1
+            elif lab == 1:
+                true_pos += 1
+
+    accuracy = (true_pos + true_neg) / len(predictions)
+    precision = true_pos / (true_pos + true_neg) if true_pos + true_neg > 0 else 0
+    recall = true_pos / (true_pos + false_neg) if true_pos + false_pos > 0 else 0
+    f1 = 2 * ((precision * recall) / (precision + recall)) if precision + recall > 0 else 0
+
+    print(f"Total: {len(predictions)}, TP: {true_pos}, TN: {true_neg}, FP: {false_pos}, FN: {false_neg}")
+    print(f"Accuracy: {accuracy}")
+    print(f"Precision: {precision}")
+    print(f"Recall: {recall}")
+    print(f"F1-Score: {f1}")
+
+
 def main():
     args = parse_args()
 
@@ -150,34 +253,12 @@ def main():
 
     df = generate_playlist_dataframe(spotify, args.playlist_id, genius)
     train_df, test_df = generate_dataset(df)
+    train_dataloader, test_dataloader = generate_dataloaders_from_dfs(train_df, test_df)
+    model = BasicBertPredictor()
 
-    bert_tokenizer = BertTokenizer.from_pretrained("bert-base-cased")
-    tokenized_training_data = bert_tokenizer(
-        list(train_df["line_prompt"]),
-        list(train_df["line_query"]),
-        add_special_tokens=True,
-        padding=True,
-        truncation=True,
-        max_length=768,
-        return_tensors="pt",
-    )
-    tokenized_test_data = bert_tokenizer(
-        list(test_df["line_prompt"]),
-        list(test_df["line_query"]),
-        add_special_tokens=True,
-        padding=True,
-        truncation=True,
-        max_length=768,
-        return_tensors="pt",
-    )
-
-    test_dataset = Dataset1(tokenized_test_data, torch.Tensor(list(test_df["follows"])))
-    test_dataloader = DataLoader(test_dataset, batch_size=4, shuffle=True)
-
-    predictor = BasicBertPredictor()
-    for batch_index, (inputs, labels) in enumerate(test_dataloader):
-        result = predictor(*inputs)
-        print(f"{batch_index}, {result}, {labels}")
+    train(train_dataloader, model)
+    preds, labs = test(test_dataloader, model)
+    print_statistics(preds, labs)
 
 
 if __name__ == "__main__":
